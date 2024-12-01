@@ -142,7 +142,7 @@ md.pattern(titanic_data)
  
 
 
-#Please Step to the next session: After created datatable for Leonardo, and removed the name column, come back here. Because: We needed to assign Leonardo to the original data, to impute his age, and then remove from the OG dataset with the name: with that we are sure no one else is removed.
+#Please Step to the next chunk: After created datatable for Leonardo, and removed the name column, come back here. Because: We needed to assign Leonardo to the original data, to impute his age, and then remove from the OG dataset with the name: with that we are sure no one else is removed.
 ##################################################################################################################
 
 
