@@ -9,6 +9,17 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(here)
+library(haven)
+library(psych)
+library(naniar)
+library(mice)
+library(VIM)
+library(misty)
+library(corrplot)
+library(caret)
+library(car)
+library(lmtest)
 ```
 
 # Background story
@@ -30,7 +41,7 @@ This is the training dataset of the Titanic dataset from the Kaggle Titanic Chal
 ## Metadata
 
 ```{r echo = FALSE, warning = FALSE, message = FALSE}
-metadata <- readr::read_tsv(here::here("data/assignment_6_metadata.tsv"))
+metadata <- readr::read_tsv(here::here("~/Documents/GitHub/Fall-2024/data/assignment_6_metadata_.tsv"))
 
 metadata %>% 
   knitr::kable()
@@ -71,60 +82,291 @@ In your discussion of the findings, briefly interpret the results of the above a
 Read the dataset used in this assignment. Pay attention to the extension of the datafile.
 
 ```{r}
+titanic_data <- read_sav("~/Documents/GitHub/Fall-2024/data/assignment_6_dataset_.sav")
+class(titanic_data)
+#format the data for str (however it's just a personal preference)
+titanic_data <- zap_formats(titanic_data)
+titanic_data <- zap_labels(titanic_data)
+titanic_data <- zap_widths(titanic_data)
 
+titanic_data <- as.data.frame(titanic_data)
+View(titanic_data)
 ```
 
 ## EDA
 
 ```{r}
+str(titanic_data)
+table(titanic_data$Survived) #How many people survived
+table(titanic_data$Pclass) #Most of the people were travelling on third class. 
+table(titanic_data$Sex) #Gender distribution
+describe(titanic_data$Age) #Descriptive stats for Age
+table(titanic_data$SibSp) #Were the passengers with other people from the family?
+table(titanic_data$Parch) #Children were alone?
+describe(titanic_data$Fare)
 
+#creating binary data for Cabin variable: If there is a cabin number, than 1 if not than 0
+titanic_data <- titanic_data %>%
+  mutate(Cabin_b = ifelse(Cabin == "", 0, 1),
+         Embarked_coded = ifelse(Embarked == "C", 1, ifelse( Embarked == "Q", 2, 3)),
+         Sex_coded = ifelse(Sex == "female", 1, 0))
+
+str(titanic_data)
+#Verify if it was successful, by randomly:
+View(titanic_data)
+
+table(titanic_data$Cabin_b) #Most of the passenger did not have a cabin
+table(titanic_data$Embarked) #Where did they step on board
+
+#Is there any missing data? 
+colSums(is.na(titanic_data)) #<- Yes at Age there is 177 missing values. 
 ```
 
 ## Clean the data
 
 ```{r}
+#I created a new variable, because if a problem occurs, it is easier to re-run the modification. 
+titanic_data_cleaned <- titanic_data %>%
+  select(-PassengerId,
+         -Ticket,
+         -Cabin,
+         -Embarked,
+         -Sex)
 
+#Checking whether there is any pattern in missingness, or it is MCAR (Missing Complitely at Random)
+mcar_test(titanic_data_cleaned)
+vis_miss(titanic_data)
+mcar_test(titanic_data %>% select(Age)) #Significant
+md.pattern(titanic_data)
+
+ 
+
+
+#Please Step to the next session: After created datatable for Leonardo, and removed the name column, come back here. Because: We needed to assign Leonardo to the original data, to impute his age, and then remove from the OG dataset with the name: with that we are sure no one else is removed.
+##################################################################################################################
+
+
+
+correlation_matrix <- cor(training_dataset)
+corrplot(correlation_matrix, method= "color")
+# First we must calculate the outlier variables:
+model_1<- glm(Survived ~ Pclass + Sex_coded+ Age+ Parch + Fare+ Cabin_b+ Embarked_coded+ Pclass:Age+  Pclass:Fare + Pclass:Cabin_b+ SibSp:Parch + Cabin_b:Fare,  data= training_dataset, family = "binomial")
+summary(model_1)
+
+#Cook's distance
+cooks_d <- cooks.distance(model_1)
+
+#Influential points
+influential<- which(cooks_d > 4/nrow(training_dataset))
+
+# Create new dataset without outliers
+training_final<- training_dataset[-influential, ]
+
+
+
+#Assigning interaction between the variables which correlation is min |3|
+model_1_1<- glm(Survived ~ Pclass + Sex_coded+ Age+ Parch + Fare+ Cabin_b+ Embarked_coded+ Pclass:Age+  Pclass:Fare + Pclass:Cabin_b+ SibSp:Parch + Cabin_b:Fare,  data= training_final, family = "binomial")
+summary(model_1_1)
+
+################################################################################
+#Please go to the line 245
 ```
 
 ## Creating a datatable for Sue, Kate, and Leonardo
 
 ```{r}
 
+#Trying to find Kate
+Kate_precise<- titanic_data %>% 
+  filter(grepl("Kate", Name, ignore.case = TRUE) & 
+         Embarked == "S" & 
+         Pclass == 3 & 
+         Cabin_b == 0)             #<- Although it returned results, they are not matching exactly the other given attributes (neither does for Sue and Leonardo)                
+
+Kate <- data.frame(Survived = 1,
+                    Pclass = 3,
+                    Age = 4,
+                    SibSp = 0,
+                    Parch = 1,
+                    Fare = 8,
+                    Cabin_b = 0,
+                    Embarked_coded = 3,
+                    Sex_coded = 1)
+
+
+Sue <- data.frame(Survived = 0,
+                    Pclass = 3,
+                    Age = 20,
+                    SibSp = 1,
+                    Parch = 1,
+                    Fare = 8,
+                    Cabin_b = 0,
+                    Embarked_coded = 3,
+                    Sex_coded = 1)
+
+
+Leonardo<- data.frame(Survived = NA,
+                    Pclass = 3,
+                    Name= "Leonardo",
+                    Age = NA,
+                    SibSp = 1,
+                    Parch = 1,
+                    Fare = 8,
+                    Cabin_b = 0,
+                    Embarked_coded = 3,
+                    Sex_coded = 0)
+
+
+
+#Because Leonardo's Age is unknown I am attaching him to the OG data.
+data_with_Leonardo <- rbind(titanic_data_cleaned, Leonardo)
+View(data_with_Leonardo)
+#Using Mice to inmmpute missing variables (included Leonardo's age)
+set.seed(123)
+imputed_data <- mice(data_with_Leonardo, meth= "rf", rf.method= "randomForest", m=5, maxit= 10, ntree=10)
+#final_list (one method)
+complete_with_Leonardo <- complete(imputed_data, action = 1)
+View(complete_with_Leonardo)
+#Removing Leonardo from the training (OG) dataset.
+
+training_dataset <- complete_with_Leonardo[complete_with_Leonardo$Name != "Leonardo", ]
+Leonardo_final <- complete_with_Leonardo[complete_with_Leonardo$Name == "Leonardo", ]
+View(training_dataset)
+View(Leonardo_final)
+
+Leonardo_final <- Leonardo_final %>%
+  select(-Name)
+
+training_dataset <- training_dataset %>%
+  select(-Name)
+#Please go back to the previous chunk's marked section
+
+
+################################################################################
+#Continue here after the end of the last section
+Sue_with_Leonardo <- rbind(Sue, Leonardo_final)
+
+Kate_with_Leonardo <- rbind(Kate, Leonardo_final)
+
+
+
 ```
 
-## Building the null model
+## Building the null model + Check the assumptions
+The assumtion check was copied here, because I used them to the model building. Sorry for the inconvenience.
 
 ```{r}
+#Again the model
+model_1_1<- glm(Survived ~ Pclass + Sex_coded+ Age+ Parch + Fare+ Cabin_b+ Embarked_coded+ Pclass:Age+  Pclass:Fare + Pclass:Cabin_b+ SibSp:Parch + Cabin_b:Fare,  data= training_final, family = "binomial")
+summary(model_1_1)
 
+vif(model_1_1) #<- removing the variables which vif vale is greater than 10
+model_1_2<- glm(Survived ~ Pclass + Sex_coded+ Age+ Parch +  Embarked_coded+ SibSp:Parch ,  data= training_final, family = "binomial")
+summary(model_1_2)
+bptest(model_1_2) #Heteroscedasticity is not present. 
+raintest(model_1_2) #Rainbow test -> the model is not biased. 
+
+train_control <- trainControl(method = "cv", number = 10)
+AIC(model_1_2)
+
+
+
+# Train a logistic regression model with cross-validation: removing predictors based on model_1_1, leaving only the significant ones. 
+training_final$Survived <- as.factor(training_final$Survived)
+model_cv <- train(Survived ~ Sex_coded+ Age+  Parch +  Embarked_coded+ SibSp:Parch ,  data= training_final, family = "binomial", trControl = train_control)
 ```
 
 ## Building the model
 
 ```{r}
 
-```
+#Prediction only for  Kate
+prediction_Kate <- predict(model_cv, newdata = Kate, type = "prob")[,2]
+print(prediction_Kate)
+#Prediction only for Sue
+prediction_Sue <- predict(model_cv, newdata = Sue, type = "prob")[,2]
+print(prediction_Sue)
 
-# Check the assumptions
+# Create combined data frames for scenarios where Leonardo is present with Sue
+#New dataset called Sue_with_Leonardo
+Sue_with_Leonardo <- Sue
+Sue_with_Leonardo$SibSp <- Sue_with_Leonardo$SibSp + Leonardo$SibSp
+Sue_with_Leonardo$Pclass <- Sue_with_Leonardo$Pclass + Leonardo$Pclass
+prediction_Sue_with_Leonardo <- predict(model_cv, newdata = Sue_with_Leonardo, type = "prob")[,2]
+print(prediction_Sue_with_Leonardo)
 
-```{r}
+# Create combined data frames for scenarios where Leonardo is present with Kate
+#New dataset called Sue_with_Leonardo
+Kate_with_Leonardo <- Kate
+Kate_with_Leonardo$SibSp <- Kate_with_Leonardo$SibSp + Leonardo$SibSp
+Kate_with_Leonardo$Pclass <- Kate_with_Leonardo$Pclass + Leonardo$Pclass
+prediction_Kate_with_Leonardo <- predict(model_cv, newdata = Kate_with_Leonardo, type = "prob")[,2]
 
+print(prediction_Kate_with_Leonardo)
 ```
 
 # Compare the models
 
 ```{r}
+comparison_Kate_with_Leonardo <- data.frame(
+  Kate = prediction_Kate,
+  Kate_with_Leonardo = prediction_Kate_with_Leonardo)
 
+print(comparison_Kate_with_Leonardo) #<- indicating Kate's chance  emerging when Leonardo is with her
+
+comparison_Sue_with_Leonardo <- data.frame(
+  Sue = prediction_Sue,
+  Sue_with_Leonardo = prediction_Sue_with_Leonardo)
+
+print(comparison_Sue_with_Leonardo). #<- indicating Sue's chance for survival  emerging when Leonardo is with her
 ```
 
-# Calculate odds ratio and confidence interval
+# Calculate odds ratio and confidence interval-for the variables in the prediction model
 
 ```{r}
-
+#Function was used one of our reserach (e.g. Németh et al., 2024) 
+CIbinm2<-function(binglm){
+  CI<-sapply(c(-1,0,1),function(x) round(exp(binglm$coefficients+x*qnorm(0.975)*sqrt(diag(vcov(binglm)))),3))
+  CI<-matrix(CI,ncol=3)
+  rownames(CI) <- names(binglm$coefficients)
+  colnames(CI) <- c("lower limit","estimate","upper limit"); print(CI)
+}
+#The base model
+CIbinm2(model_1_2)
 ```
+
+# Calculating if people with Spuses and  parents are more likely tio survive or not
+```{r}
+model_baseline <-  glm(Survived~ 1, data= training_dataset, family= "binomial")
+model_Sib <-  glm(Survived~  SibSp,
+                     data=training_dataset, family= "binomial")
+model_Parch <-  glm(Survived~  Parch,
+                     data=training_dataset, family= "binomial")
+
+anova(model_baseline, model_Sib, test= "LRT")
+anova(model_baseline, model_Parch, test= "LRT")
+summary(model_Sib)
+summary(model_Parch)
+CIbinm2(model_Sib)
+CIbinm2(model_Parch)
+```
+
 
 # Report the results
 
 ```{r}
+# If we are inspecting wether the presence of a spouse and a parent is predicting the survival only teh aprent is a significant positive predictor, spouse is not. 
+#However if we are deploying a Machine Learning algorithm, and inspecting EXACTLY the case of Kate's and Sue's chances we got the following results: 
+#Kate's prediction was correct: if her Father had been on board, her and her mother's chance would emerged, although her chance would decrease a bit. Also important before I set the seed, both chances emerged, indicating an important factor: Age, which was missing at him, so if I would be a court expert I would ask for his age for a correct prediction. 
+
+
+#The equation for the Logistic regression model which was the base of the ML:
+coef(model_1_2)
+# model_1_2 = 4.22 + (-1.58 * Pclass) + (3.34 *Sex_coded) + (-0.06* Age) + (0.46 * Parch)+ (-0.25) * Embarked_coded) + (-0.71* Parch* SibSp)
 
 ```
+
+#Cited litearture 
+Németh, T., Konok, V., & Pogány, Á. (2024). The effect of the COVID-19 lockodwn on children’s screen time and socio-cognitive skills. 15th Dubrovnik Conference on Cognitive Science, 51–52.
+ 
 
