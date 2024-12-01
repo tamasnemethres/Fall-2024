@@ -84,6 +84,46 @@ Read the dataset used in this assignment. Pay attention to the extension of the 
 
 ```{r}
 
+<<<<<<< Updated upstream
+=======
+#Checking whether there is any pattern in missingness, or it is MCAR (Missing Complitely at Random)
+mcar_test(titanic_data_cleaned)
+vis_miss(titanic_data)
+mcar_test(titanic_data %>% select(Age)) #Significant
+md.pattern(titanic_data)
+
+ 
+
+
+#Please Step to the next chunk: After created datatable for Leonardo, and removed the name column, come back here. Because: We needed to assign Leonardo to the original data, to impute his age, and then remove from the OG dataset with the name: with that we are sure no one else is removed.
+##################################################################################################################
+
+
+
+correlation_matrix <- cor(training_dataset)
+corrplot(correlation_matrix, method= "color")
+# First we must calculate the outlier variables:
+model_1<- glm(Survived ~ Pclass + Sex_coded+ Age+ Parch + Fare+ Cabin_b+ Embarked_coded+ Pclass:Age+  Pclass:Fare + Pclass:Cabin_b+ SibSp:Parch + Cabin_b:Fare,  data= training_dataset, family = "binomial")
+summary(model_1)
+
+#Cook's distance
+cooks_d <- cooks.distance(model_1)
+
+#Influential points
+influential<- which(cooks_d > 4/nrow(training_dataset))
+
+# Create new dataset without outliers
+training_final<- training_dataset[-influential, ]
+
+
+
+#Assigning interaction between the variables which correlation is min |3|
+model_1_1<- glm(Survived ~ Pclass + Sex_coded+ Age+ Parch + Fare+ Cabin_b+ Embarked_coded+ Pclass:Age+  Pclass:Fare + Pclass:Cabin_b+ SibSp:Parch + Cabin_b:Fare,  data= training_final, family = "binomial")
+summary(model_1_1)
+
+################################################################################
+#Please go to the line 245
+>>>>>>> Stashed changes
 ```
 
 ## Creating a datatable for Sue, Kate, and Leonardo
